@@ -31,7 +31,8 @@ function App() {
   const [sortBy, setSortBy] = useState('score');
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const apiKey = ""; // API Key จะถูกเติมให้โดยระบบอัตโนมัติ
+ // ดึงค่าจาก Environment Variable (Vite จะเป็นคนหามาให้ตอนรัน)
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
   // Form State
   const [formData, setFormData] = useState({
