@@ -19,7 +19,9 @@ import {
   Info,
   Camera,
   Loader2,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Pencil,
+  X
 } from 'lucide-react';
 
 function App() {
@@ -30,50 +32,57 @@ function App() {
   const [filterStatus, setFilterStatus] = useState('ทั้งหมด');
   const [sortBy, setSortBy] = useState('score');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [showMapConfirm, setShowMapConfirm] = useState(false);
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
- // ดึงค่าจาก Environment Variable (Vite จะเป็นคนหามาให้ตอนรัน)
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-
-  // Form State
-  const [formData, setFormData] = useState({
+  const initialFormState = {
     name: '',
     department: '',
     contact: '',
     locationName: '',
     googleMapsUrl: '',
-    distance: 0,
-    travelTime: 0,
-    travelCost: 0,
+    distance: '',
+    travelTime: '',
+    travelCost: '',
     status: 'รอการติดต่อ',
-    remuneration: 0,
+    remuneration: '',
     personalPreference: 5,
-  });
+    travelMethod: '',
+  };
 
-useEffect(() => {
+  const [formData, setFormData] = useState(initialFormState);
+
+  useEffect(() => {
     fetchInternships();
   }, []);
 
   const fetchInternships = async () => {
     const { data, error } = await supabase
-      .from('internships') // ชื่อตาราง
+      .from('internships')
       .select('*')
-      .order('id', { ascending: true }); // เรียงลำดับตาม id
+      .order('id', { ascending: true });
 
     if (error) {
       console.error('Error fetching data:', error);
     } else if (data) {
-      setInternships(data); // เอาข้อมูลที่ดึงมาใส่ใน List หน้าเว็บ
+      setInternships(data);
     }
   };
-  // --------------------------------------------------------
-  // Function to call Gemini AI for image understanding
+
   const processImageWithAI = async (base64Image) => {
     setIsProcessing(true);
     const prompt = `Analyze this internship recruitment post/image and extract details. 
-    Return ONLY a JSON object with these keys (use Thai for text fields if appropriate): 
-    { "name": "company name", "department": "position/dept", "contact": "phone/email/line", "locationName": "place name", "remuneration": number (daily rate in Baht, estimate if monthly), "distance": number (km), "travelTime": number (min) }. 
-    If info is missing, use null or 0. Focus on accuracy.`;
-
+Return ONLY a JSON object with these keys: 
+{ 
+  "name": "company name", 
+  "department": "position/dept", 
+  "contact": "phone/email/line", 
+  "locationName": "full detailed address (house no, building, road, sub-district, district, province)", 
+  "remuneration": number, 
+  "distance": number, 
+  "travelTime": number 
+}.`;
     const payload = {
       contents: [{
         role: "user",
@@ -84,47 +93,37 @@ useEffect(() => {
       }]
     };
 
-    const fetchWithRetry = async (url, options, retries = 5, backoff = 1000) => {
-      try {
-        const response = await fetch(url, options);
-        if (!response.ok) throw new Error('API Error');
-        return await response.json();
-      } catch (err) {
-        if (retries > 0) {
-          await new Promise(resolve => setTimeout(resolve, backoff));
-          return fetchWithRetry(url, options, retries - 1, backoff * 2);
-        }
-        throw err;
-      }
-    };
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
 
     try {
-      const result = await fetchWithRetry(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        }
-      );
-
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      
+      const result = await response.json();
       const textResponse = result.candidates?.[0]?.content?.parts?.[0]?.text;
       const jsonStr = textResponse.match(/\{[\s\S]*\}/)?.[0];
+
       if (jsonStr) {
-        const extractedData = JSON.parse(jsonStr);
-        setFormData(prev => ({
-          ...prev,
-          name: extractedData.name || prev.name,
-          department: extractedData.department || prev.department,
-          contact: extractedData.contact || prev.contact,
-          locationName: extractedData.locationName || prev.locationName,
-          remuneration: extractedData.remuneration || prev.remuneration,
-          distance: extractedData.distance || prev.distance,
-          travelTime: extractedData.travelTime || prev.travelTime
-        }));
-      }
+  const extractedData = JSON.parse(jsonStr);
+  const autoMapsUrl = extractedData.name 
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(extractedData.name)}`
+    : '';
+
+  setFormData(prev => ({
+    ...prev,
+    ...extractedData,
+    googleMapsUrl: autoMapsUrl
+  }));
+
+  // ✨ เพิ่มบรรทัดนี้: เมื่อสแกนเสร็จ ให้เด้งป๊อปอัพขึ้นมาทันที
+  setShowMapConfirm(true); 
+}
     } catch (error) {
       console.error("AI Error:", error);
+      alert("AI ไม่สามารถอ่านข้อมูลจากรูปนี้ได้ กรุณาลองใหม่อีกครั้ง");
     } finally {
       setIsProcessing(false);
     }
@@ -134,82 +133,121 @@ useEffect(() => {
     const file = e.target.files[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        processImageWithAI(reader.result);
-      };
+      reader.onloadend = () => processImageWithAI(reader.result);
       reader.readAsDataURL(file);
     }
   };
 
   const calculateScores = (item) => {
-    const distanceScore = Math.max(0, 10 - (item.distance / 3));
-    const costScore = Math.max(0, 10 - (item.travelCost / 20));
-    const payScore = Math.min(10, (item.remuneration / 50));
-    const preferenceScore = item.personalPreference;
-    const total = (distanceScore * 2) + (costScore * 2) + (payScore * 3) + (preferenceScore * 3);
+    const distance = parseFloat(item.distance) || 0;
+    const travelCost = parseFloat(item.travelCost) || 0;
+    const remuneration = parseFloat(item.remuneration) || 0;
+    
+    const distanceScore = Math.max(0, 10 - (distance / 3));
+    const costScore = Math.max(0, 10 - (travelCost / 20));
+    const payScore = Math.min(10, (remuneration / 50));
+    const total = (distanceScore * 2) + (costScore * 2) + (payScore * 3) + (item.personalPreference * 3);
     return parseFloat((total).toFixed(2));
   };
 
-  const handleAddInternship = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    // คำนวณคะแนนและเตรียมข้อมูล
-    const newScore = calculateScores(formData);
-    const newEntry = {
+
+    // 1. สร้างข้อมูลที่สะอาดก่อนส่ง (แปลงค่าว่างกลับเป็นตัวเลข 0)
+    const sanitizedData = {
       ...formData,
-      score: newScore
-      // สังเกตว่าเราลบ id: Date.now() ออกไป เพราะ Supabase จะสร้าง id ให้เราเอง
+      distance: parseFloat(formData.distance) || 0,
+      travelTime: parseInt(formData.travelTime) || 0,
+      travelCost: parseInt(formData.travelCost) || 0,
+      remuneration: parseInt(formData.remuneration) || 0,
+      personalPreference: parseInt(formData.personalPreference) || 5,
     };
 
-    // ส่งข้อมูลบันทึกลง Supabase
-    const { data, error } = await supabase
-      .from('internships')
-      .insert([newEntry])
-      .select(); // .select() เพื่อให้มันคืนค่าข้อมูลที่เซฟสำเร็จกลับมา (พร้อม id แท้จริง)
+    // 2. คำนวณคะแนนจากข้อมูลที่สะอาดแล้ว
+    const newScore = calculateScores(sanitizedData);
+    const submissionData = { ...sanitizedData, score: newScore };
 
-    if (error) {
-      console.error('Error saving data:', error);
-      alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล');
-    } else if (data) {
-      // เซฟสำเร็จ: อัปเดตหน้าเว็บและล้างฟอร์ม
-      setInternships([...internships, data[0]]);
-      setFormData({
-        name: '', department: '', contact: '', locationName: '',
-        googleMapsUrl: '', distance: 0, travelTime: 0, travelCost: 0,
-        status: 'รอการติดต่อ', remuneration: 0, personalPreference: 5
-      });
-      setShowAddForm(false);
+    if (editingId) {
+      // กรณี: แก้ไขข้อมูลเดิม
+      const { data, error } = await supabase
+        .from('internships')
+        .update(submissionData)
+        .eq('id', editingId)
+        .select();
+
+      if (error) {
+        alert('แก้ไขไม่สำเร็จ: ' + error.message);
+      } else {
+        setInternships(internships.map(item => item.id === editingId ? data[0] : item));
+        alert('อัปเดตข้อมูลเรียบร้อย!');
+        setEditingId(null);
+        setFormData(initialFormState); // ล้างฟอร์ม
+        setShowAddForm(false);
+      }
+    } else {
+      // กรณี: เพิ่มข้อมูลใหม่
+      const { data, error } = await supabase
+        .from('internships')
+        .insert([submissionData])
+        .select();
+
+      if (error) {
+        alert('บันทึกไม่สำเร็จ: ' + error.message);
+      } else if (data) {
+        setInternships([...internships, data[0]]);
+        alert('บันทึกสำเร็จ!');
+        setFormData(initialFormState); // ล้างฟอร์ม
+        setShowAddForm(false);
+      }
     }
   };
 
-  const deleteInternship = async (id) => {
-    // 1. สั่งลบจาก Supabase ก่อน
-    const { error } = await supabase
-      .from('internships')
-      .delete()
-      .eq('id', id);
+  const handleEdit = (item) => {
+    setFormData(item);
+    setEditingId(item.id);
+    setShowAddForm(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
-    if (error) {
-      console.error('Error deleting data:', error);
-      alert('ไม่สามารถลบข้อมูลได้');
-    } else {
-      // 2. ลบออกจากหน้าเว็บ
-      setInternships(internships.filter(item => item.id !== id));
+  const handleCancel = () => {
+    setFormData(initialFormState);
+    setEditingId(null);
+    setShowAddForm(false);
+  };
+
+  const deleteInternship = async (id) => {
+    if (!window.confirm('คุณต้องการลบข้อมูลนี้ใช่หรือไม่?')) return;
+    const { error } = await supabase.from('internships').delete().eq('id', id);
+    if (!error) setInternships(internships.filter(item => item.id !== id));
+  };
+
+  // ✨ [เพิ่ม] ฟังก์ชันสำหรับเปิด Google Maps นำทาง
+  const openGoogleMapsDirections = () => {
+    if (!userLocation || !formData.name) {
+      alert('กรุณาระบุที่อยู่ของคุณที่ช่องด้านบนสุด และชื่อสถานที่ในฟอร์มก่อนครับ');
+      return;
     }
+    const origin = encodeURIComponent(userLocation);
+    const destination = encodeURIComponent(formData.locationName || formData.name);
+    
+    // URL สำหรับเปิด Google Maps นำทาง
+    const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}`;
+    
+    window.open(mapsUrl, '_blank');
   };
 
   const filteredAndSortedList = useMemo(() => {
     return internships
       .filter(item => {
-        const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                            item.department.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesSearch = (item.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                              (item.department || '').toLowerCase().includes(searchTerm.toLowerCase());
         const matchesStatus = filterStatus === 'ทั้งหมด' || item.status === filterStatus;
         return matchesSearch && matchesStatus;
       })
       .sort((a, b) => {
         if (sortBy === 'score') return b.score - a.score;
-        if (sortBy === 'pay') return b.remuneration - a.remuneration;
-        return a.name.localeCompare(b.name);
+        if (sortBy === 'pay') return (b.remuneration || 0) - (a.remuneration || 0);
+        return (a.name || '').localeCompare(b.name || '');
       });
   }, [internships, searchTerm, filterStatus, sortBy]);
 
@@ -236,13 +274,13 @@ useEffect(() => {
           </div>
           <button 
             onClick={() => {
-                setShowAddForm(!showAddForm);
-                if (!showAddForm) window.scrollTo({ top: 0, behavior: 'smooth' });
+                if(showAddForm) handleCancel();
+                else setShowAddForm(true);
             }}
-            className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl transition-all shadow-lg active:scale-95"
+            className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl transition-all shadow-lg active:scale-95 text-white ${showAddForm ? 'bg-slate-500 hover:bg-slate-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}
           >
-            {showAddForm ? <ChevronUp size={20}/> : <Plus size={20}/>}
-            เพิ่มที่ฝึกงาน
+            {showAddForm ? <X size={20}/> : <Plus size={20}/>}
+            {showAddForm ? 'ยกเลิก' : (editingId ? 'กำลังแก้ไข' : 'เพิ่มที่ฝึกงาน')}
           </button>
         </header>
 
@@ -253,84 +291,111 @@ useEffect(() => {
           </div>
           <input 
             type="text" 
-            placeholder="ระบุที่อยู่ปัจจุบันของคุณ..."
+            placeholder="ระบุที่อยู่ปัจจุบันของคุณ (เช่น ชื่อมหาวิทยาลัย, หอพัก)..."
             className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none"
             value={userLocation}
             onChange={(e) => setUserLocation(e.target.value)}
           />
         </div>
 
-        {/* Add Form with AI Scanner */}
+        {/* Add/Edit Form */}
         {showAddForm && (
           <div className="bg-white p-6 rounded-2xl shadow-xl border border-indigo-100 mb-8 animate-in fade-in slide-in-from-top-4 duration-300">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
               <h2 className="text-xl font-bold flex items-center gap-2">
-                <Plus className="text-indigo-600"/> ข้อมูลที่ฝึกงานใหม่
+                {editingId ? <Pencil className="text-orange-500"/> : <Plus className="text-indigo-600"/>}
+                {editingId ? 'แก้ไขข้อมูลที่ฝึกงาน' : 'ข้อมูลที่ฝึกงานใหม่'}
               </h2>
               
-              {/* AI Scanner Button */}
-              <div className="relative group w-full md:w-auto">
-                <input 
-                  type="file" 
-                  accept="image/*" 
-                  onChange={handleImageUpload}
-                  className="hidden" 
-                  id="ai-upload"
-                  disabled={isProcessing}
-                />
-                <label 
-                  htmlFor="ai-upload"
-                  className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg cursor-pointer transition-all border-2 border-dashed ${isProcessing ? 'bg-slate-50 border-slate-300 text-slate-400' : 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'}`}
-                >
-                  {isProcessing ? (
-                    <><Loader2 size={18} className="animate-spin"/> AI กำลังอ่านรูปภาพ...</>
-                  ) : (
-                    <><Camera size={18}/> สแกนประกาศจากรูปภาพ</>
-                  )}
-                </label>
-              </div>
+              {!editingId && (
+                <div className="relative group w-full md:w-auto">
+                  <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" id="ai-upload" disabled={isProcessing}/>
+                  <label htmlFor="ai-upload" className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg cursor-pointer border-2 border-dashed ${isProcessing ? 'bg-slate-50 text-slate-400' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'}`}>
+                    {isProcessing ? <><Loader2 size={18} className="animate-spin"/> AI กำลังอ่านรูป...</> : <><Camera size={18}/> สแกนรูปภาพ</>}
+                  </label>
+                </div>
+              )}
             </div>
 
-            <form onSubmit={handleAddInternship} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div className="space-y-1">
                 <label className="text-sm font-medium text-slate-600">ชื่อสถานที่</label>
-                <input required className="w-full border rounded-lg p-2 focus:border-indigo-500 outline-none" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                <input required className="w-full border rounded-lg p-2 outline-none focus:border-indigo-500" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-medium text-slate-600">แผนก/ตำแหน่ง</label>
-                <input required className="w-full border rounded-lg p-2 focus:border-indigo-500 outline-none" value={formData.department} onChange={e => setFormData({...formData, department: e.target.value})} />
+                <input required className="w-full border rounded-lg p-2 outline-none focus:border-indigo-500" value={formData.department} onChange={e => setFormData({...formData, department: e.target.value})} />
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-medium text-slate-600">ช่องทางติดต่อ</label>
-                <input className="w-full border rounded-lg p-2 focus:border-indigo-500 outline-none" value={formData.contact} onChange={e => setFormData({...formData, contact: e.target.value})} />
+                <input className="w-full border rounded-lg p-2 outline-none focus:border-indigo-500" value={formData.contact} onChange={e => setFormData({...formData, contact: e.target.value})} />
               </div>
+              {/* ช่องที่ตั้ง/ที่อยู่ (เพิ่มกลับมาและให้ AI กรอกอัตโนมัติ) */}
+<div className="space-y-1 md:col-span-2 lg:col-span-3">
+  <label className="text-sm font-medium text-slate-600">ที่ตั้ง/ที่อยู่ละเอียด (AI จะสกัดจากรูปให้)</label>
+  <textarea 
+    rows="2"
+    className="w-full border rounded-lg p-2 outline-none focus:border-indigo-500 text-sm" 
+    placeholder="บ้านเลขที่, ถนน, แขวง/ตำบล, เขต/อำเภอ..." 
+    value={formData.locationName} 
+    onChange={e => setFormData({...formData, locationName: e.target.value})} 
+  />
+</div>
+              {/* Google Maps Link Field */}
+              <div className="space-y-1 md:col-span-2 lg:col-span-3">
+                <label className="text-sm font-medium text-slate-600 flex justify-between">
+                  <span>Google Maps Link (AI จะสร้างให้อัตโนมัติหลังสแกน)</span>
+                  {formData.googleMapsUrl && (
+                     <a href={formData.googleMapsUrl} target="_blank" rel="noreferrer" className="text-[10px] text-blue-500 hover:underline">ทดสอบเปิดแผนที่</a>
+                  )}
+                </label>
+                <input className="w-full border rounded-lg p-2 outline-none focus:border-indigo-500 text-sm text-blue-600" placeholder="https://www.google.com/maps/..." value={formData.googleMapsUrl} onChange={e => setFormData({...formData, googleMapsUrl: e.target.value})} />
+              </div>
+              
+              {/* ระยะทาง พร้อมปุ่มเช็กใน Maps */}
               <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-600">Location (ชื่อสถานที่)</label>
-                <input className="w-full border rounded-lg p-2 focus:border-indigo-500 outline-none" value={formData.locationName} onChange={e => setFormData({...formData, locationName: e.target.value})} />
+                <label className="text-sm font-medium text-slate-600 flex justify-between items-center">
+                  <span>ระยะทาง (กม.)</span>
+                  <button 
+                    type="button"
+                    onClick={openGoogleMapsDirections}
+                    className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded hover:bg-indigo-100 transition-colors flex items-center gap-1 border border-indigo-200"
+                  >
+                    <ExternalLink size={10}/> เช็กใน Maps
+                  </button>
+                </label>
+                <input type="number" step="0.1" placeholder="0" className="w-full border rounded-lg p-2 outline-none focus:border-indigo-500" value={formData.distance} onChange={e => setFormData({...formData, distance: e.target.value})} />
               </div>
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-600">Google Maps Link</label>
-                <input className="w-full border rounded-lg p-2 focus:border-indigo-500 outline-none" placeholder="https://..." value={formData.googleMapsUrl} onChange={e => setFormData({...formData, googleMapsUrl: e.target.value})} />
-              </div>
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-600">ระยะทาง (กม.)</label>
-                <input type="number" step="0.1" className="w-full border rounded-lg p-2 focus:border-indigo-500 outline-none" value={formData.distance} onChange={e => setFormData({...formData, distance: parseFloat(e.target.value) || 0})} />
-              </div>
+
               <div className="space-y-1">
                 <label className="text-sm font-medium text-slate-600">ระยะเวลาเดินทาง (นาที)</label>
-                <input type="number" className="w-full border rounded-lg p-2 focus:border-indigo-500 outline-none" value={formData.travelTime} onChange={e => setFormData({...formData, travelTime: parseInt(e.target.value) || 0})} />
+                <input type="number" placeholder="0" className="w-full border rounded-lg p-2 outline-none focus:border-indigo-500" value={formData.travelTime} onChange={e => setFormData({...formData, travelTime: e.target.value})} />
               </div>
               <div className="space-y-1">
+  <label className="text-sm font-medium text-slate-600">วิธีการเดินทาง</label>
+  <select 
+    className="w-full border rounded-lg p-2 bg-white outline-none focus:border-indigo-500" 
+    value={formData.travelMethod} 
+    onChange={e => setFormData({...formData, travelMethod: e.target.value})}
+  >
+    <option value="รถเมล์">🚌 รถเมล์</option>
+    <option value="รถส่วนตัว">🚗 รถส่วนตัว</option>
+    <option value="รถไฟฟ้า">🚆 รถไฟฟ้า</option>
+    <option value="เดิน">🚶 เดิน</option>
+  </select>
+</div>
+              <div className="space-y-1">
                 <label className="text-sm font-medium text-slate-600">ค่าเดินทาง (บาท/วัน)</label>
-                <input type="number" className="w-full border rounded-lg p-2 focus:border-indigo-500 outline-none" value={formData.travelCost} onChange={e => setFormData({...formData, travelCost: parseInt(e.target.value) || 0})} />
+                <input type="number" placeholder="0" className="w-full border rounded-lg p-2 outline-none focus:border-indigo-500" value={formData.travelCost} onChange={e => setFormData({...formData, travelCost: e.target.value})} />
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-medium text-slate-600">ค่าตอบแทน (บาท/วัน)</label>
-                <input type="number" className="w-full border rounded-lg p-2 focus:border-indigo-500 outline-none" value={formData.remuneration} onChange={e => setFormData({...formData, remuneration: parseInt(e.target.value) || 0})} />
+                <input type="number" placeholder="0" className="w-full border rounded-lg p-2 outline-none focus:border-indigo-500" value={formData.remuneration} onChange={e => setFormData({...formData, remuneration: e.target.value})} />
               </div>
+
               <div className="space-y-1">
                 <label className="text-sm font-medium text-slate-600">สถานะ</label>
-                <select className="w-full border rounded-lg p-2 bg-white focus:border-indigo-500 outline-none" value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})}>
+                <select className="w-full border rounded-lg p-2 bg-white outline-none focus:border-indigo-500" value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})}>
                   <option>รอการติดต่อ</option>
                   <option>ยื่นเอกสารแล้ว</option>
                   <option>ตอบรับ</option>
@@ -344,15 +409,18 @@ useEffect(() => {
                   <span className="font-bold text-indigo-600 w-8 text-center">{formData.personalPreference}</span>
                 </div>
               </div>
-              <div className="md:col-span-2 lg:col-span-3 flex justify-end gap-2 pt-4">
-                <button type="button" onClick={() => setShowAddForm(false)} className="px-4 py-2 text-slate-500 hover:bg-slate-100 rounded-lg">ยกเลิก</button>
-                <button type="submit" className="px-8 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 shadow-md">บันทึกข้อมูล</button>
+
+              <div className="md:col-span-2 lg:col-span-3 flex justify-end gap-2 pt-4 border-t mt-4">
+                <button type="button" onClick={handleCancel} className="px-4 py-2 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors">ยกเลิก</button>
+                <button type="submit" className={`px-8 py-2 text-white rounded-lg shadow-md transition-all active:scale-95 ${editingId ? 'bg-orange-500 hover:bg-orange-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
+                  {editingId ? 'อัปเดตข้อมูล' : 'บันทึกข้อมูลใหม่'}
+                </button>
               </div>
             </form>
           </div>
         )}
 
-        {/* Filters & Sorting */}
+        {/* Search & Filters */}
         <div className="flex flex-col md:flex-row gap-4 mb-6">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18}/>
@@ -391,7 +459,7 @@ useEffect(() => {
           {filteredAndSortedList.length === 0 ? (
             <div className="bg-white py-20 rounded-3xl border-2 border-dashed border-slate-200 text-center text-slate-400">
               <ImageIcon className="mx-auto mb-2 opacity-20" size={48}/>
-              <p>ยังไม่มีข้อมูลที่ฝึกงาน กดเพิ่มข้อมูลหรือสแกนรูปภาพเพื่อเริ่มต้น</p>
+              <p>ยังไม่มีข้อมูล หรือ ไม่พบข้อมูลที่ค้นหา</p>
             </div>
           ) : (
             filteredAndSortedList.map((item, index) => (
@@ -408,51 +476,49 @@ useEffect(() => {
                       <span className={`px-2 py-1 rounded-full border font-medium ${getStatusColor(item.status)}`}>
                         {item.status}
                       </span>
-                      <span className="flex items-center gap-1 text-slate-500">
-                        <Phone size={12}/> {item.contact || 'ไม่ระบุ'}
-                      </span>
+                      {item.contact && (
+                        <span className="flex items-center gap-1 text-slate-500">
+                          <Phone size={12}/> {item.contact}
+                        </span>
+                      )}
                     </div>
                   </div>
 
                   <div className="lg:col-span-5 grid grid-cols-2 sm:grid-cols-4 gap-4 border-l border-slate-100 pl-4">
                     <div className="flex flex-col">
                       <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">ระยะทาง</span>
-                      <span className="font-bold text-slate-700">{item.distance} กม.</span>
-                      <span className="text-[10px] text-slate-500">{item.travelTime} นาที</span>
+                      <span className="font-bold text-slate-700">{item.distance || 0} กม.</span>
                     </div>
                     <div className="flex flex-col">
+    <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">วิธีเดินทาง</span>
+  <span className="font-medium text-slate-700 text-sm">{item.travelMethod || 'ไม่ระบุ'}</span>
+</div>
+                    <div className="flex flex-col">
                       <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">ค่าเดินทาง</span>
-                      <span className="font-bold text-slate-700">{item.travelCost} ฿</span>
-                      <span className="text-[10px] text-slate-500">/วัน</span>
+                      <span className="font-bold text-slate-700">{item.travelCost || 0} ฿</span>
                     </div>
                     <div className="flex flex-col">
                       <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">ค่าตอบแทน</span>
-                      <span className="font-bold text-green-600">{item.remuneration} ฿</span>
-                      <span className="text-[10px] text-slate-500">/วัน</span>
+                      <span className="font-bold text-green-600">{item.remuneration || 0} ฿</span>
                     </div>
                     <div className="flex flex-col">
-                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">ความชอบ</span>
-                      <div className="flex items-center gap-1 text-orange-500 font-bold">
-                        <Star size={14} fill="currentColor"/> {item.personalPreference}
-                      </div>
+                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">คะแนน</span>
+                      <span className="font-bold text-indigo-600 text-lg">{item.score}</span>
                     </div>
                   </div>
 
-                  <div className="lg:col-span-3 flex flex-row lg:flex-col items-center justify-between lg:justify-center gap-4 border-l border-slate-100 pl-4">
-                    <div className="text-center">
-                      <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">คะแนนรวม</div>
-                      <div className="text-3xl font-black text-indigo-600">{item.score}</div>
-                    </div>
-                    <div className="flex gap-2">
-                      {item.googleMapsUrl && (
-                        <a href={item.googleMapsUrl} target="_blank" rel="noopener noreferrer" className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors">
-                          <ExternalLink size={20}/>
-                        </a>
-                      )}
-                      <button onClick={() => deleteInternship(item.id)} className="p-2 text-red-400 hover:bg-red-50 hover:text-red-600 rounded-lg transition-colors">
-                        <Trash2 size={20}/>
-                      </button>
-                    </div>
+                  <div className="lg:col-span-3 flex justify-end gap-2 border-l border-slate-100 pl-4">
+                    <button onClick={() => handleEdit(item)} className="p-2 text-orange-400 hover:bg-orange-50 rounded-lg transition-colors" title="แก้ไข">
+                      <Pencil size={20}/>
+                    </button>
+                    <button onClick={() => deleteInternship(item.id)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition-colors" title="ลบ">
+                      <Trash2 size={20}/>
+                    </button>
+                    {item.googleMapsUrl && (
+                      <a href={item.googleMapsUrl} target="_blank" rel="noopener noreferrer" className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors" title="เปิดแผนที่">
+                        <ExternalLink size={20}/>
+                      </a>
+                    )}
                   </div>
                 </div>
               </div>
@@ -460,27 +526,79 @@ useEffect(() => {
           )}
         </div>
 
+        {/* Footer / Instructions */}
         <footer className="mt-12 p-6 bg-white rounded-2xl border border-slate-200 shadow-sm">
-          <h4 className="font-bold mb-4 flex items-center gap-2 text-indigo-700"><Info size={18}/> วิธีใช้ AI ช่วยกรอกข้อมูล</h4>
+          <h4 className="font-bold mb-4 flex items-center gap-2 text-indigo-700"><Info size={18}/> วิธีใช้ AI ช่วยกรอกข้อมูลให้เร็วขึ้น</h4>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm text-slate-600">
             <div className="space-y-2">
               <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">1</div>
-              <p>แคปภาพหน้าจอประกาศรับสมัครงานหรือถ่ายรูปใบปลิว</p>
+              <p>กด <strong>"สแกนรูปภาพ"</strong> แล้วเลือกรูปประกาศรับสมัครงาน AI จะกรอกชื่อ แผนก และสร้างลิงก์แผนที่ให้อัตโนมัติ</p>
             </div>
             <div className="space-y-2">
               <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">2</div>
-              <p>กดปุ่ม <strong>"สแกนประกาศจากรูปภาพ"</strong> ในหน้าต่างเพิ่มข้อมูล</p>
+              <p>ระบุ "ที่อยู่ของคุณ" ด้านบนสุด แล้วกด <strong>"เช็กใน Maps"</strong> เพื่อดูระยะทางจริงแล้วนำมากรอก</p>
             </div>
             <div className="space-y-2">
               <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">3</div>
-              <p>ตรวจสอบข้อมูลที่ AI ดึงมาให้ แล้วกดบันทึกเพื่อจัดอันดับ</p>
+              <p>กดบันทึกข้อมูล ระบบจะคำนวณคะแนนความคุ้มค่าและจัดอันดับที่ฝึกงานให้คุณโดยอัตโนมัติ</p>
             </div>
           </div>
         </footer>
 
       </div>
+      {/* --- ป๊อปอัพยืนยันสถานที่บน Google Maps (เวอร์ชันเพิ่มที่อยู่) --- */}
+{showMapConfirm && (
+  <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+    <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6 text-center animate-in zoom-in duration-300">
+      <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4">
+        <MapPin size={32} />
+      </div>
+      
+      <h3 className="text-xl font-bold text-slate-800 mb-2">ตรวจสอบที่อยู่?</h3>
+      
+      <div className="bg-slate-50 p-4 rounded-2xl mb-6 text-left">
+        <div className="mb-3">
+          <p className="text-slate-400 text-[10px] uppercase font-black tracking-widest mb-1">บริษัท</p>
+          <p className="text-slate-800 font-bold">{formData.name || 'ไม่ระบุ'}</p>
+        </div>
+        
+        <div>
+          <p className="text-slate-400 text-[10px] uppercase font-black tracking-widest mb-1">ที่อยู่ละเอียด (จากรูป)</p>
+          <p className="text-indigo-600 font-medium text-sm leading-relaxed">
+            {formData.locationName || 'ไม่พบข้อมูลที่อยู่บนรูป'}
+          </p>
+        </div>
+      </div>
+      
+      <div className="space-y-3">
+        <button 
+          onClick={() => window.open(formData.googleMapsUrl, '_blank')}
+          className="w-full py-3 bg-white border-2 border-indigo-600 text-indigo-600 rounded-xl font-bold hover:bg-indigo-50 transition-colors flex items-center justify-center gap-2"
+        >
+          <ExternalLink size={18}/> เช็กตำแหน่งใน Maps
+        </button>
+
+        <button 
+          onClick={() => setShowMapConfirm(false)}
+          className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-lg transition-all active:scale-95"
+        >
+          ยืนยัน ข้อมูลถูกต้อง
+        </button>
+
+        <button 
+          onClick={() => {
+            setShowMapConfirm(false);
+          }}
+          className="text-sm text-slate-400 hover:text-slate-600 transition-colors"
+        >
+          ปิดหน้าต่างนี้
+        </button>
+      </div>
+    </div>
+  </div>
+)}
     </div>
   );
 }
 
-export default App
+export default App;
