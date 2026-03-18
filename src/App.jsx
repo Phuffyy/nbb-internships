@@ -87,11 +87,15 @@ function App() {
 
     // 2. ดึงที่เพื่อนแชร์มา (ใช้ RPC หรือ Join กรองด้วยอีเมลเรา)
     // หมายเหตุ: RLS ที่เราตั้งไว้จะช่วยกรองให้เองอัตโนมัติเมื่อเรา query ตาราง internships
-    const { data: shared } = await supabase
-      .from('internships')
-      .select('*')
-      .neq('user_id', user.id); // ดึงเฉพาะอันที่เราไม่ใช่เจ้าของ
-    if (shared) setSharedList(shared);
+    const { data: shared, error } = await supabase
+  .from('internships')
+  .select('*, shared_access!inner(*)')
+  .eq('shared_access.viewer_email', user.email);
+
+console.log("ข้อมูลที่เพื่อนแชร์มา:", shared); // <-- ดูตรงนี้ใน Console (F12)
+if (shared) setSharedList(shared);
+    
+    
   };
 
 // --- ฟังก์ชันแชร์ให้เพื่อน ---
@@ -302,6 +306,7 @@ if (!session?.user) {
   };
 
   const filteredAndSortedList = useMemo(() => {
+    const currentSource = viewMode === 'mine' ? internships : sharedList;
     return internships
       .filter(item => {
         const matchesSearch = (item.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -314,7 +319,7 @@ if (!session?.user) {
         if (sortBy === 'pay') return (b.remuneration || 0) - (a.remuneration || 0);
         return (a.name || '').localeCompare(b.name || '');
       });
-  }, [internships, searchTerm, filterStatus, sortBy]);
+  }, [internships, sharedList, viewMode, searchTerm, filterStatus, sortBy]);
 
   const getStatusColor = (status) => {
     switch(status) {
@@ -324,6 +329,60 @@ if (!session?.user) {
       default: return 'bg-gray-100 text-gray-800 border-gray-200';
     }
   };
+  const shareInternship = async (internship, friendEmail) => {
+  const { error } = await supabase
+    .from('shared_access')
+    .insert([
+      { 
+        internship_id: internship.id, // เอา ID งานของเรา ไปใส่ช่อง internship_id ใน DB
+        viewer_email: friendEmail.toLowerCase().trim(), // ปรับเป็นตัวพิมพ์เล็กให้หมด
+        can_edit: false 
+      }
+    ]);
+
+  if (error) {
+    alert("แชร์ไม่สำเร็จ: " + error.message);
+  } else {
+    alert("แชร์ให้เพื่อนเรียบร้อยแล้ว!");
+  }
+};
+
+const revokeAccess = async (accessId) => {
+  const { error } = await supabase
+    .from('shared_access')
+    .delete()
+    .eq('id', accessId); // ลบตาม ID ของแถวในตาราง shared_access
+
+  if (error) {
+    alert("ยกเลิกไม่สำเร็จ: " + error.message);
+  } else {
+    alert("ยกเลิกการแชร์แล้ว");
+    // อย่าลืมเรียก fetch ข้อมูลใหม่เพื่ออัปเดตหน้าจอด้วยนะ
+  }
+};
+
+const fetchSharedUsers = async (internshipId) => {
+  const { data, error } = await supabase
+    .from('shared_access')
+    .select('*')
+    .eq('internship_id', internshipId);
+    
+  if (data) setSharedUsers(data);
+};
+
+const handleRevoke = async (accessId) => {
+  if (window.confirm("คุณต้องการยกเลิกการแชร์ให้เพื่อนคนนี้ใช่หรือไม่?")) {
+    const { error } = await supabase
+      .from('shared_access')
+      .delete()
+      .eq('id', accessId);
+
+    if (!error) {
+      // ลบสำเร็จ ให้ตัดชื่อออกจากลิสต์ในหน้าจอทันที
+      setSharedUsers(prev => prev.filter(u => u.id !== accessId));
+    }
+  }
+};
 
 // --- ส่วน UI Login (ถ้ายังไม่ได้ล็อกอิน) ---
   if (!session) {
@@ -730,7 +789,32 @@ if (!session?.user) {
                 </p>
               </div>
             </div>
-            
+            {/* ส่วนจัดการรายชื่อเพื่อนที่ได้รับสิทธิ์ (Manage Access) */}
+<div className="mt-6 border-t pt-4">
+  <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+    <Users size={16} /> คนที่เข้าถึงข้อมูลนี้ได้
+  </h4>
+  
+  <div className="space-y-2">
+    {/* สมมติว่าคุณเก็บรายชื่อเพื่อนที่แชร์ไว้ใน state ชื่อ sharedUsers */}
+    {sharedUsers.length > 0 ? (
+      sharedUsers.map((user) => (
+        <div key={user.id} className="flex justify-between items-center bg-gray-50 p-2 rounded-lg border">
+          <span className="text-sm text-gray-600">{user.viewer_email}</span>
+          <button 
+            onClick={() => handleRevoke(user.id)}
+            className="p-1 hover:bg-red-100 text-red-500 rounded-full transition-colors"
+            title="ยกเลิกการแชร์"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      ))
+    ) : (
+      <p className="text-xs text-gray-400 italic">ยังไม่ได้แชร์ให้ใคร</p>
+    )}
+  </div>
+</div>
             <div className="space-y-3">
               <button 
                 onClick={() => window.open(formData.googleMapsUrl, '_blank')}
