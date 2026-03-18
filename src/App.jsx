@@ -3,6 +3,7 @@ import viteLogo from './assets/vite.svg'
 import heroImg from './assets/hero.png'
 import './App.css'
 import { supabase } from './supabaseClient'; 
+import { createClient } from '@supabase/supabase-js';
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Plus, 
@@ -38,6 +39,7 @@ function App() {
   const [editingId, setEditingId] = useState(null);
   const [showMapConfirm, setShowMapConfirm] = useState(false);
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareEmail, setShareEmail] = useState('');
   const [canEditPermission, setCanEditPermission] = useState(false);
@@ -211,7 +213,10 @@ Return ONLY a JSON object with these keys:
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
+if (!session?.user) {
+        alert("เซสชันหมดอายุ หรือยังไม่ได้ล็อกอิน กรุณาล็อกอินใหม่อีกครั้ง");
+        return;
+    }
     // 1. สร้างข้อมูลที่สะอาดก่อนส่ง (แปลงค่าว่างกลับเป็นตัวเลข 0)
     const sanitizedData = {
       ...formData,
@@ -220,6 +225,7 @@ Return ONLY a JSON object with these keys:
       travelCost: parseInt(formData.travelCost) || 0,
       remuneration: parseInt(formData.remuneration) || 0,
       personalPreference: parseInt(formData.personalPreference) || 5,
+      user_id: session.user.id
     };
 
     // 2. คำนวณคะแนนจากข้อมูลที่สะอาดแล้ว
