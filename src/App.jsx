@@ -99,6 +99,52 @@ function App() {
     loadSharedUsers();
   }, [showShareModal, selectedInternship]);
 
+const fetchAllData = async (user) => {
+  try {
+    console.log("เริ่มดึงข้อมูลสำหรับ:", user.email);
+
+    // 1. ดึงงานของตัวเอง
+    const { data: mine, error: mineError } = await supabase
+      .from('internships')
+      .select('*')
+      .eq('user_id', user.id);
+    
+    if (mineError) console.error("Error ดึงงานตัวเอง:", mineError);
+    if (mine) setInternships(mine);
+
+    // 2. ดึงงานที่เพื่อนแชร์มา (ลอจิก 2 จังหวะที่คุณเขียนมา)
+    const { data: accessData, error: accessError } = await supabase
+      .from('shared_access')
+      .select('internship_id')
+      .ilike('viewer_email', user.email.trim());
+
+    if (accessError) {
+      console.error("Error ดึงสิทธิ์การเข้าถึง:", accessError);
+    }
+
+    if (accessData && accessData.length > 0) {
+      const sharedIds = accessData.map(item => item.internship_id);
+      
+      const { data: sharedInternships, error: sharedError } = await supabase
+        .from('internships')
+        .select('*')
+        .in('id', sharedIds);
+
+      if (sharedError) console.error("Error ดึงงานเพื่อน:", sharedError);
+      
+      if (sharedInternships) {
+        console.log("พบงานที่เพื่อนแชร์มา:", sharedInternships);
+        setSharedList(sharedInternships);
+      }
+    } else {
+      console.log("ยังไม่มีใครแชร์งานมาให้คุณ");
+      setSharedList([]);
+    }
+  } catch (err) {
+    console.error("เกิดข้อผิดพลาดที่ไม่คาดคิด:", err);
+  }
+};
+
   // --- ฟังก์ชันดึงข้อมูลแบบแยกประเภท ---
   const fetchSharedData = async (userEmail) => {
   // 1. ไปหา ID ของงานที่คนอื่นแชร์มาให้เราก่อน
