@@ -121,20 +121,29 @@ if (shared) setSharedList(shared);
     
   };
 
-// --- ฟังก์ชันแชร์ให้เพื่อน ---
+// --- แก้ไขฟังก์ชันแชร์ให้เพื่อน ---
   const handleShare = async () => {
     if (!shareEmail) return alert("กรุณากรอกอีเมลเพื่อนครับ");
+    if (!selectedInternship) return alert("เกิดข้อผิดพลาด: ไม่พบข้อมูลงานที่จะแชร์");
     
     const { error } = await supabase.from('shared_access').insert([{
-      owner_id: session.user.id,
+      // ✅ ต้องเปลี่ยนจาก owner_id เป็น internship_id ให้ตรงกับหัวตารางใน Supabase
+      internship_id: selectedInternship.id, 
       viewer_email: shareEmail.trim().toLowerCase(),
       can_edit: canEditPermission
     }]);
 
     if (!error) {
       alert(`แชร์ให้ ${shareEmail} เรียบร้อย!`);
-      setShowShareModal(false);
-      setShareEmail('');
+      
+      // ดึงรายชื่อใหม่มาโชว์ในลิสต์ทันที
+      const { data } = await supabase
+        .from('shared_access')
+        .select('*')
+        .eq('internship_id', selectedInternship.id);
+      if (data) setSharedUsers(data);
+      
+      setShareEmail(''); // ล้างช่องกรอกอีเมล
     } else {
       alert("แชร์ไม่สำเร็จ: " + error.message);
     }
