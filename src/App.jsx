@@ -44,6 +44,7 @@ function App() {
   const [shareEmail, setShareEmail] = useState('');
   const [canEditPermission, setCanEditPermission] = useState(false);
   const [sharedUsers, setSharedUsers] = useState([]);
+  const [selectedInternship, setSelectedInternship] = useState(null);
 
   const initialFormState = {
     name: '',
