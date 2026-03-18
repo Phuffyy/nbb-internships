@@ -100,26 +100,31 @@ function App() {
   }, [showShareModal, selectedInternship]);
 
   // --- ฟังก์ชันดึงข้อมูลแบบแยกประเภท ---
-  const fetchAllData = async (user) => {
-    // 1. ดึงของตัวเอง
-    const { data: mine } = await supabase
+  const fetchSharedData = async (userEmail) => {
+  // 1. ไปหา ID ของงานที่คนอื่นแชร์มาให้เราก่อน
+  const { data: accessData } = await supabase
+    .from('shared_access')
+    .select('internship_id')
+    .ilike('viewer_email', userEmail.trim());
+
+  if (accessData && accessData.length > 0) {
+    // 2. เอา ID ที่ได้ (เป็น Array) ไปดึงข้อมูลงานจริงๆ มา
+    const sharedIds = accessData.map(item => item.internship_id);
+    
+    const { data: sharedInternships, error } = await supabase
       .from('internships')
       .select('*')
-      .eq('user_id', user.id);
-    if (mine) setInternships(mine);
+      .in('id', sharedIds); // ดึงเฉพาะ ID ที่อยู่ในลิสต์ที่แชร์มา
 
-    // 2. ดึงที่เพื่อนแชร์มา (ใช้ RPC หรือ Join กรองด้วยอีเมลเรา)
-    // หมายเหตุ: RLS ที่เราตั้งไว้จะช่วยกรองให้เองอัตโนมัติเมื่อเรา query ตาราง internships
-    const { data: shared, error } = await supabase
-  .from('internships')
-  .select('*, shared_access!inner(*)')
-  .eq('shared_access.viewer_email', user.email);
-
-console.log("ข้อมูลที่เพื่อนแชร์มา:", shared); // <-- ดูตรงนี้ใน Console (F12)
-if (shared) setSharedList(shared);
-    
-    
-  };
+    if (sharedInternships) {
+      console.log("พบงานที่เพื่อนแชร์มา:", sharedInternships);
+      setSharedList(sharedInternships);
+    }
+  } else {
+    console.log("ไม่มีใครแชร์งานมาให้อีเมลนี้เลย");
+    setSharedList([]);
+  }
+};
 
 // --- แก้ไขฟังก์ชันแชร์ให้เพื่อน ---
   const handleShare = async () => {
