@@ -728,43 +728,80 @@ const handleRevoke = async (accessId) => {
 
       </div>
 
-      {/* --- Modals --- */}
-      
       {/* 1. Modal แชร์ให้เพื่อน */}
-      {showShareModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
-          <div className="bg-white rounded-3xl p-6 max-w-sm w-full animate-in zoom-in duration-200 shadow-2xl">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold flex items-center gap-2"><Share2 className="text-indigo-600"/> แชร์ให้เพื่อน</h3>
-              <button onClick={() => setShowShareModal(false)} className="text-slate-400 hover:text-slate-600"><X size={24}/></button>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs font-bold text-slate-400 uppercase">อีเมล Google ของเพื่อน</label>
-                <input 
-                  type="email" 
-                  className="w-full border p-3 rounded-xl mt-1 outline-none focus:border-indigo-500" 
-                  placeholder="friend@gmail.com"
-                  value={shareEmail}
-                  onChange={(e) => setShareEmail(e.target.value)}
-                />
-              </div>
-              <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors">
-                <input 
-                  type="checkbox" 
-                  className="w-5 h-5 accent-indigo-600 rounded"
-                  checked={canEditPermission}
-                  onChange={(e) => setCanEditPermission(e.target.checked)}
-                />
-                <span className="text-sm font-medium text-slate-700">อนุญาตให้เพื่อนแก้ไขข้อมูลได้</span>
-              </label>
-              <button onClick={handleShare} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-all">
-                แชร์สิทธิ์การเข้าถึง
-              </button>
-            </div>
+{showShareModal && (
+  <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+    <div className="bg-white rounded-3xl p-6 max-w-sm w-full animate-in zoom-in duration-200 shadow-2xl">
+      <div className="flex justify-between items-center mb-6">
+        <h3 className="text-xl font-bold flex items-center gap-2">
+          <Share2 className="text-indigo-600"/> แชร์ให้เพื่อน
+        </h3>
+        <button onClick={() => setShowShareModal(false)} className="text-slate-400 hover:text-slate-600">
+          <X size={24}/>
+        </button>
+      </div>
+      
+      <div className="space-y-4">
+        <div>
+          <label className="text-xs font-bold text-slate-400 uppercase">อีเมล Google ของเพื่อน</label>
+          <input 
+            type="email" 
+            className="w-full border p-3 rounded-xl mt-1 outline-none focus:border-indigo-500" 
+            placeholder="friend@gmail.com"
+            value={shareEmail}
+            onChange={(e) => setShareEmail(e.target.value)}
+          />
+        </div>
+        <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors">
+          <input 
+            type="checkbox" 
+            className="w-5 h-5 accent-indigo-600 rounded"
+            checked={canEditPermission}
+            onChange={(e) => setCanEditPermission(e.target.checked)}
+          />
+          <span className="text-sm font-medium text-slate-700">อนุญาตให้เพื่อนแก้ไขข้อมูลได้</span>
+        </label>
+        <button onClick={handleShare} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-all">
+          แชร์สิทธิ์การเข้าถึง
+        </button>
+
+        {/* --- ส่วนที่เพิ่มใหม่: รายชื่อเพื่อนที่มีสิทธิ์อยู่แล้ว --- */}
+        <div className="mt-6 border-t border-slate-100 pt-4">
+          <h4 className="text-xs font-bold text-slate-400 uppercase mb-3 flex items-center gap-2">
+            <Users size={14} /> คนที่มีสิทธิ์เข้าถึง ({sharedUsers.length})
+          </h4>
+          
+          <div className="max-h-40 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+            {sharedUsers.length > 0 ? (
+              sharedUsers.map((user) => (
+                <div key={user.id} className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium text-slate-700 truncate max-w-[180px]">
+                      {user.viewer_email}
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      {user.can_edit ? 'แก้ไขได้' : 'ดูได้อย่างเดียว'}
+                    </span>
+                  </div>
+                  <button 
+                    onClick={() => handleRevoke(user.id)}
+                    className="p-2 hover:bg-red-50 text-red-400 hover:text-red-600 rounded-lg transition-colors"
+                    title="ยกเลิกการแชร์"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              ))
+            ) : (
+              <p className="text-xs text-slate-400 italic text-center py-2">ยังไม่มีการแชร์ให้ใคร</p>
+            )}
           </div>
         </div>
-      )}
+        {/* ------------------------------------------- */}
+      </div>
+    </div>
+  </div>
+)}
 
       {/* 2. Modal ยืนยันสถานที่บน Google Maps */}
       {showMapConfirm && (
@@ -789,32 +826,7 @@ const handleRevoke = async (accessId) => {
                 </p>
               </div>
             </div>
-            {/* ส่วนจัดการรายชื่อเพื่อนที่ได้รับสิทธิ์ (Manage Access) */}
-<div className="mt-6 border-t pt-4">
-  <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-    <Users size={16} /> คนที่เข้าถึงข้อมูลนี้ได้
-  </h4>
-  
-  <div className="space-y-2">
-    {/* สมมติว่าคุณเก็บรายชื่อเพื่อนที่แชร์ไว้ใน state ชื่อ sharedUsers */}
-    {sharedUsers.length > 0 ? (
-      sharedUsers.map((user) => (
-        <div key={user.id} className="flex justify-between items-center bg-gray-50 p-2 rounded-lg border">
-          <span className="text-sm text-gray-600">{user.viewer_email}</span>
-          <button 
-            onClick={() => handleRevoke(user.id)}
-            className="p-1 hover:bg-red-100 text-red-500 rounded-full transition-colors"
-            title="ยกเลิกการแชร์"
-          >
-            <X size={14} />
-          </button>
-        </div>
-      ))
-    ) : (
-      <p className="text-xs text-gray-400 italic">ยังไม่ได้แชร์ให้ใคร</p>
-    )}
-  </div>
-</div>
+            
             <div className="space-y-3">
               <button 
                 onClick={() => window.open(formData.googleMapsUrl, '_blank')}
