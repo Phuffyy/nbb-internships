@@ -66,7 +66,30 @@ function App() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session) fetchAllData(session.user);
+      
     });
+// --- useEffect ตัวใหม่สำหรับดึงรายชื่อเพื่อนเมื่อเปิด Modal ---
+useEffect(() => {
+  const loadSharedUsers = async () => {
+    // จะทำงานก็ต่อเมื่อ 1. เปิด Modal และ 2. เลือกงานที่จะแชร์แล้วเท่านั้น
+    if (showShareModal && selectedInternship) {
+      const { data, error } = await supabase
+        .from('shared_access')
+        .select('*')
+        .eq('internship_id', selectedInternship.id);
+      
+      if (!error && data) {
+        setSharedUsers(data);
+      }
+    } else {
+      // ถ้าปิด Modal ให้ล้างข้อมูลทิ้ง เพื่อไม่ให้รายชื่อเพื่อนค้างไปโชว์ในงานถัดไป
+      setSharedUsers([]);
+      setShareEmail('');
+    }
+  };
+
+  loadSharedUsers();
+}, [showShareModal, selectedInternship]); // <--- ตัวเฝ้าดู: ถ้าเปิด Modal หรือเปลี่ยนงาน ให้รันฟังก์ชันข้างบนใหม่
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
@@ -691,6 +714,17 @@ const handleRevoke = async (accessId) => {
                         <Pencil size={20}/>
                       </button>
                     )}
+                    {/* 2. ปุ่มแชร์ (วางตรงนี้เลย!) */}
+        <button 
+          onClick={() => {
+            setSelectedInternship(item); // บันทึกว่าเราจะแชร์งาน 'item' นี้
+            setShowShareModal(true);      // เปิดหน้าต่าง Modal
+          }}
+          className="p-2 text-slate-400 hover:text-indigo-600 transition-colors"
+          title="แชร์ให้เพื่อน"
+        >
+          <Share2 size={20} />
+        </button>
                     {/* ปุ่มลบ: โชว์เฉพาะในโหมดของตัวเอง */}
                     {viewMode === 'mine' && (
                       <button onClick={() => deleteInternship(item.id)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition-colors" title="ลบ">
