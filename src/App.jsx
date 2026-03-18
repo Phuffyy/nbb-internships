@@ -390,7 +390,7 @@ if (!session?.user) {
 
   const filteredAndSortedList = useMemo(() => {
     const currentSource = viewMode === 'mine' ? internships : sharedList;
-    return internships
+    return currentSource // <-- เปลี่ยนตรงนี้
       .filter(item => {
         const matchesSearch = (item.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
                               (item.department || '').toLowerCase().includes(searchTerm.toLowerCase());
