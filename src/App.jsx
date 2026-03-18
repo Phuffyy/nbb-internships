@@ -43,7 +43,7 @@ function App() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareEmail, setShareEmail] = useState('');
   const [canEditPermission, setCanEditPermission] = useState(false);
-  
+  const [sharedUsers, setSharedUsers] = useState([]);
 
   const initialFormState = {
     name: '',
@@ -378,8 +378,10 @@ const handleRevoke = async (accessId) => {
       .eq('id', accessId);
 
     if (!error) {
-      // ลบสำเร็จ ให้ตัดชื่อออกจากลิสต์ในหน้าจอทันที
+      // ลบในฐานข้อมูลสำเร็จ ให้ลบในหน้าจอด้วย
       setSharedUsers(prev => prev.filter(u => u.id !== accessId));
+    } else {
+      alert("เกิดข้อผิดพลาด: " + error.message);
     }
   }
 };
