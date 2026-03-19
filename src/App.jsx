@@ -752,12 +752,6 @@ const handleRevoke = async (accessId) => {
                           Shared
                         </span>
                       )}
-                      {item.notes && (
-    <div className="mt-3 p-3 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-[11px] text-slate-600 italic">
-      <span className="font-bold text-slate-500 non-italic">หมายเหตุ: </span> 
-      {item.notes}
-    </div>
-  )}
                       {item.contact && (
                         <span className="flex items-center gap-1 text-slate-500">
                           <Phone size={12}/> {item.contact}
