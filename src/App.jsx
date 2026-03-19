@@ -39,12 +39,12 @@ function App() {
   const [editingId, setEditingId] = useState(null);
   const [showMapConfirm, setShowMapConfirm] = useState(false);
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareEmail, setShareEmail] = useState('');
   const [canEditPermission, setCanEditPermission] = useState(false);
   const [sharedUsers, setSharedUsers] = useState([]);
   const [selectedInternship, setSelectedInternship] = useState(null);
+  
 
   const initialFormState = {
     name: '',
@@ -59,6 +59,7 @@ function App() {
     remuneration: '',
     personalPreference: 5,
     travelMethod: '',
+    notes: '',
   };
 
   const [formData, setFormData] = useState(initialFormState);
@@ -572,6 +573,7 @@ const handleRevoke = async (accessId) => {
                         {isProcessing ? <><Loader2 size={18} className="animate-spin"/> AI กำลังอ่านรูป...</> : <><Camera size={18}/> สแกนรูปภาพ</>}
                       </label>
                     </div>
+                  
                   )}
                 </div>
 
@@ -666,6 +668,16 @@ const handleRevoke = async (accessId) => {
                       <span className="font-bold text-indigo-600 w-8 text-center">{formData.personalPreference}</span>
                     </div>
                   </div>
+                  <div className="md:col-span-2 lg:col-span-3 space-y-1">
+  <label className="text-sm font-medium text-slate-600">หมายเหตุ / ข้อมูลเพิ่มเติม</label>
+  <textarea 
+    rows="3"
+    className="w-full border rounded-lg p-2 outline-none focus:border-indigo-500 text-sm bg-slate-50/50" 
+    placeholder="ระบุรายละเอียดเพิ่มเติม เช่น สวัสดิการที่ได้, บรรยากาศที่ทำงาน, หรือสิ่งที่รุ่นพี่บอกต่อมา..." 
+    value={formData.notes || ''} 
+    onChange={e => setFormData({...formData, notes: e.target.value})} 
+  />
+</div>
 
                   <div className="md:col-span-2 lg:col-span-3 flex justify-end gap-2 pt-4 border-t mt-4">
                     <button type="button" onClick={handleCancel} className="px-4 py-2 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors">ยกเลิก</button>
@@ -740,11 +752,29 @@ const handleRevoke = async (accessId) => {
                           Shared
                         </span>
                       )}
+                      {item.notes && (
+    <div className="mt-3 p-3 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-[11px] text-slate-600 italic">
+      <span className="font-bold text-slate-500 non-italic">หมายเหตุ: </span> 
+      {item.notes}
+    </div>
+  )}
                       {item.contact && (
                         <span className="flex items-center gap-1 text-slate-500">
                           <Phone size={12}/> {item.contact}
                         </span>
-                      )}
+                        
+                      )}{/* <--- ปิด div ของส่วน status/contact */}
+
+                    {/* ✅ วางส่วนหมายเหตุตรงนี้ครับ ✅ */}
+                    {item.notes && (
+                      <div className="mt-3 p-3 bg-indigo-50/50 rounded-xl border-l-4 border-indigo-400">
+                        <p className="text-[10px] font-bold text-indigo-700 uppercase mb-0.5">หมายเหตุ:</p>
+                        <p className="text-xs text-slate-600 leading-relaxed italic">
+                          "{item.notes}"
+                        </p>
+                      </div>
+                    )}
+                      
                     </div>
                   </div>
 
